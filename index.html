@@ -41,7 +41,8 @@
 </main>
 <script>
 let params, api, key;
-const readLink = () => { params = new URLSearchParams(location.hash.slice(1)); api = params.get("api"); key = params.get("key"); };
+// Chat apps sometimes turn & into &amp; when a link is copied, so undo that before reading it.
+const readLink = () => { params = new URLSearchParams(location.hash.slice(1).replaceAll("&amp;", "&")); api = params.get("api"); key = params.get("key"); };
 readLink();
 addEventListener("hashchange", () => { readLink(); load(); });  // a newer link opened in an already open tab
 const $ = (id) => document.getElementById(id);
@@ -75,7 +76,12 @@ function pendingCard(a) {
 }
 
 async function load() {
-  if (!api || !key) { $("status").textContent = "Open this page from the link in your email."; return; }
+  if (!api || !key) {
+    $("status").textContent = !location.hash
+      ? "This address has no key. Open the full link from your email, or run make approvals-link and paste all of it, including everything after #."
+      : `This link is incomplete: it is missing ${!api ? "the api part" : "the key part"}. Copy the whole link again.`;
+    return;
+  }
   try {
     const { reports, pending } = await call("GET");
     $("status").textContent = `Updated ${when(Date.now())}`;
