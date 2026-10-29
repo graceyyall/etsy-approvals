@@ -40,8 +40,10 @@
   <div id="reports"></div>
 </main>
 <script>
-const params = new URLSearchParams(location.hash.slice(1));
-const api = params.get("api"), key = params.get("key");
+let params, api, key;
+const readLink = () => { params = new URLSearchParams(location.hash.slice(1)); api = params.get("api"); key = params.get("key"); };
+readLink();
+addEventListener("hashchange", () => { readLink(); load(); });  // a newer link opened in an already open tab
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const when = (t) => new Date(t).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
