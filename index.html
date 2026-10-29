@@ -1,0 +1,91 @@
+<!doctype html>
+<!-- Approvals page. Published on its own to a small public GitHub Pages repo; holds no data or secrets.
+     Open it with the link from `make approvals-link`: #api=...&key=... -->
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Studio approvals</title>
+<style>
+  :root { --bg: #f6f4ef; --fg: #1d1b18; --muted: #6b665d; --line: #d9d4c9; --card: #fff; --ok: #1f6b3a; --no: #9a2b22; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161513; --fg: #ece8df; --muted: #a29c90; --line: #34312c; --card: #1f1d1a; --ok: #6cc28c; --no: #ec8a80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 Georgia, "Times New Roman", serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 28px; font-weight: normal; margin: 0 0 4px; }
+  h2 { font: 600 12px/1 system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 36px 0 12px; }
+  .status { color: var(--muted); font: 14px system-ui, sans-serif; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin-bottom: 12px; }
+  .meta { font: 13px system-ui, sans-serif; color: var(--muted); margin-bottom: 8px; }
+  pre { white-space: pre-wrap; word-break: break-word; font: 14px/1.55 ui-monospace, Menlo, Consolas, monospace; margin: 0; }
+  input { width: 100%; font: 15px system-ui, sans-serif; padding: 10px; margin: 12px 0; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); }
+  .row { display: flex; gap: 8px; }
+  button { flex: 1; font: 600 15px system-ui, sans-serif; padding: 12px; border-radius: 4px; border: 1px solid currentColor; background: none; cursor: pointer; }
+  .approve { color: var(--ok); } .reject { color: var(--no); }
+  button:disabled { opacity: .4; cursor: default; }
+  details summary { cursor: pointer; font: 600 15px system-ui, sans-serif; }
+  details pre { margin-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Studio approvals</h1>
+  <p class="status" id="status">Loading…</p>
+  <h2>Waiting on you</h2>
+  <div id="pending"></div>
+  <h2>Latest reports</h2>
+  <div id="reports"></div>
+</main>
+<script>
+const params = new URLSearchParams(location.hash.slice(1));
+const api = params.get("api"), key = params.get("key");
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const when = (t) => new Date(t).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" });
+
+async function call(method, body) {
+  const r = await fetch(api, { method, headers: { "x-approvals-key": key, "content-type": "application/json" }, body: body && JSON.stringify(body) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+  return r.json();
+}
+
+function pendingCard(a) {
+  const card = el("div", "card");
+  card.append(el("div", "meta", `#${a.id} · ${a.kind} · ${when(a.created_at)}`));
+  card.append(el("pre", null, JSON.stringify(a.ref, null, 2)));
+  if (a.note) card.append(el("p", null, a.note));
+  const note = el("input"); note.placeholder = "Note (optional)";
+  const row = el("div", "row");
+  for (const [label, decision] of [["Approve", "approved"], ["Reject", "rejected"]]) {
+    const b = el("button", decision === "approved" ? "approve" : "reject", label);
+    b.onclick = async () => {
+      row.querySelectorAll("button").forEach((x) => (x.disabled = true));
+      try { await call("POST", { id: a.id, decision, note: note.value }); card.replaceChildren(el("div", "meta", `#${a.id} ${decision}.`)); }
+      catch (e) { $("status").textContent = `Could not save: ${e.message}`; row.querySelectorAll("button").forEach((x) => (x.disabled = false)); }
+    };
+    row.append(b);
+  }
+  card.append(note, row);
+  return card;
+}
+
+async function load() {
+  if (!api || !key) { $("status").textContent = "Open this page from the link in your email."; return; }
+  try {
+    const { reports, pending } = await call("GET");
+    $("status").textContent = `Updated ${when(Date.now())}`;
+    $("pending").replaceChildren(...(pending.length ? pending.map(pendingCard) : [el("p", "status", "Nothing to approve.")]));
+    $("reports").replaceChildren(...(reports.length ? reports.map((r) => {
+      const d = el("details", "card"); d.open = r.kind === "scan";
+      d.append(el("summary", null, `${r.kind} · ${when(r.created_at)}`), el("pre", null, r.body_md));
+      return d;
+    }) : [el("p", "status", "No reports yet.")]));
+  } catch (e) { $("status").textContent = e.message === "forbidden" ? "This link is not valid. Use the latest one from your email." : `Could not load: ${e.message}`; }
+}
+load();
+</script>
+</body>
+</html>
