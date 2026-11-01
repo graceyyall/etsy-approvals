@@ -1,5 +1,5 @@
-<!doctype html>
-<!-- Approvals page. Published on its own to a small public GitHub Pages repo; holds no data or secrets.
+﻿<!doctype html>
+<!-- Approvals page. Published with previews/ to a small public GitHub Pages repo; holds no private data or secrets.
      Open it with the link from `make approvals-link`: #api=...&key=... -->
 <html lang="en-AU">
 <head>
@@ -28,12 +28,28 @@
   button:disabled { opacity: .4; cursor: default; }
   details summary { cursor: pointer; font: 600 15px system-ui, sans-serif; }
   details pre { margin-top: 12px; }
+  h3 { font: 19px/1.3 Georgia, "Times New Roman", serif; margin: 0 0 4px; }
+  .label { font: 600 12px/1 system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
+  .was { color: var(--muted); text-decoration: line-through; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font: 14px system-ui, sans-serif; padding: 3px 9px; border: 1px solid var(--line); border-radius: 99px; }
+  .tag.added { color: var(--ok); border-color: currentColor; }
+  .tag.gone { color: var(--no); border-color: currentColor; text-decoration: line-through; }
+  .text { white-space: pre-wrap; font: 15px/1.5 system-ui, sans-serif; margin: 8px 0 0; }
+  .photos { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 12px -16px 0; padding: 0 16px 8px; }
+  .photos a { flex: 0 0 88%; scroll-snap-align: center; }
+  .photos img { display: block; width: 100%; aspect-ratio: 5 / 4; border: 1px solid var(--line); border-radius: 4px; }
+  dl { margin: 12px 0 0; font: 15px system-ui, sans-serif; }
+  dt { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  dd { margin: 0; word-break: break-word; }
+  a { color: inherit; }
+  .live { display: inline-block; font: 14px system-ui, sans-serif; margin-top: 2px; }
 </style>
 </head>
 <body>
 <main>
   <h1>Studio approvals</h1>
-  <p class="status" id="status">Loading…</p>
+  <p class="status" id="status">Loadingâ€¦</p>
   <h2>Waiting on you</h2>
   <div id="pending"></div>
   <h2>Latest reports</h2>
@@ -55,11 +71,63 @@ async function call(method, body) {
   return r.json();
 }
 
+const KINDS = { copy_fix: "New words", photos: "New photos", price: "Price change", archive: "Deactivate", section_move: "Move to a shop section" };
+const listingLink = (id) => { const l = el("a", "live", "See the listing on Etsy"); l.href = `https://www.etsy.com/listing/${Number(id)}`; l.target = "_blank"; l.rel = "noopener"; return l; };
+const section = (label, ...body) => { const s = el("div"); s.append(el("div", "label", label), ...body); return s; };
+const fold = (label, text) => { const d = el("details"); d.append(el("summary", "meta", label), el("p", "text", text)); return d; };
+
+function tagChips(now, was) {
+  const box = el("div", "tags");
+  for (const t of now) box.append(el("span", was && !was.includes(t) ? "tag added" : "tag", t));
+  for (const t of (was || []).filter((t) => !now.includes(t))) box.append(el("span", "tag gone", t));
+  return box;
+}
+
+// What the approval does, in words. Anything without its own layout falls back to a plain list of its details.
+function details(a) {
+  const r = a.ref, was = r.before || {}, parts = [];
+  if (r.title) parts.push(el("h3", null, r.title));
+  if (r.etsy_listing_id) parts.push(listingLink(r.etsy_listing_id));
+  if (a.kind === "photos") {
+    const row = el("div", "photos");
+    for (let n = 1; n <= 10; n++) {
+      const src = `previews/${Number(r.etsy_listing_id)}/${String(n).padStart(2, "0")}.jpg`;
+      const link = el("a"), img = el("img");
+      link.href = src; link.target = "_blank"; img.src = src; img.loading = "lazy"; img.alt = `New photo ${n} of 10`;
+      link.append(img); row.append(link);
+    }
+    parts.push(section("Swipe to see all 10 new photos", row));
+    if (r.alt) parts.push(section("Description for each photo", el("p", "text", r.alt)));
+  } else if (a.kind === "copy_fix") {
+    if (r.new_title) {
+      const box = el("div");
+      if (was.title) box.append(el("p", "text was", was.title));
+      box.append(el("p", "text", r.new_title));
+      parts.push(section("New title", box));
+    }
+    if (r.tags) parts.push(section(was.tags ? "Tags: green is new, red is removed" : "New tags", tagChips(r.tags, was.tags)));
+    if (r.description) {
+      const box = el("div");
+      box.append(fold("Read the new description", r.description));
+      if (was.description) box.append(fold("Read the current description", was.description));
+      parts.push(section("New description", box));
+    }
+    if (r.alt) parts.push(section("New description for each photo", el("p", "text", r.alt)));
+  } else {
+    const list = el("dl");
+    for (const [k, v] of Object.entries(r)) {
+      if (["title", "listing_id", "etsy_listing_id"].includes(k)) continue;
+      list.append(el("dt", null, k.replaceAll("_", " ")), el("dd", null, typeof v === "object" ? JSON.stringify(v) : String(v)));
+    }
+    parts.push(list);
+    if (a.note) parts.push(el("p", null, a.note));
+  }
+  return parts;
+}
+
 function pendingCard(a) {
   const card = el("div", "card");
-  card.append(el("div", "meta", `#${a.id} · ${a.kind} · ${when(a.created_at)}`));
-  card.append(el("pre", null, JSON.stringify(a.ref, null, 2)));
-  if (a.note) card.append(el("p", null, a.note));
+  card.append(el("div", "meta", `#${a.id} Â· ${KINDS[a.kind] || a.kind} Â· ${when(a.created_at)}`), ...details(a));
   const note = el("input"); note.placeholder = "Note (optional)";
   const row = el("div", "row");
   for (const [label, decision] of [["Approve", "approved"], ["Reject", "rejected"]]) {
@@ -88,7 +156,7 @@ async function load() {
     $("pending").replaceChildren(...(pending.length ? pending.map(pendingCard) : [el("p", "status", "Nothing to approve.")]));
     $("reports").replaceChildren(...(reports.length ? reports.map((r) => {
       const d = el("details", "card"); d.open = r.kind === "scan";
-      d.append(el("summary", null, `${r.kind} · ${when(r.created_at)}`), el("pre", null, r.body_md));
+      d.append(el("summary", null, `${r.kind} Â· ${when(r.created_at)}`), el("pre", null, r.body_md));
       return d;
     }) : [el("p", "status", "No reports yet.")]));
   } catch (e) { $("status").textContent = e.message === "forbidden" ? "This link is not valid. Use the latest one from your email." : `Could not load: ${e.message}`; }
