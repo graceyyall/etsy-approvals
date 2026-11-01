@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <!-- Approvals page. Published with previews/ to a small public GitHub Pages repo; holds no private data or secrets.
      Open it with the link from `make approvals-link`: #api=...&key=... -->
 <html lang="en-AU">
@@ -43,13 +43,18 @@
   dt { color: var(--muted); font-size: 13px; margin-top: 8px; }
   dd { margin: 0; word-break: break-word; }
   a { color: inherit; }
+  .report { font: 15px/1.5 system-ui, sans-serif; overflow-wrap: anywhere; }
+  .report h3 { margin: 16px 0 4px; }
+  .report p { margin: 8px 0; }
+  .report ul { margin: 8px 0; padding-left: 20px; }
+  .report pre { overflow-x: auto; white-space: pre-wrap; }
   .live { display: inline-block; font: 14px system-ui, sans-serif; margin-top: 2px; }
 </style>
 </head>
 <body>
 <main>
   <h1>Studio approvals</h1>
-  <p class="status" id="status">Loadingâ€¦</p>
+  <p class="status" id="status">Loading…</p>
   <h2>Waiting on you</h2>
   <div id="pending"></div>
   <h2>Latest reports</h2>
@@ -127,7 +132,7 @@ function details(a) {
 
 function pendingCard(a) {
   const card = el("div", "card");
-  card.append(el("div", "meta", `#${a.id} Â· ${KINDS[a.kind] || a.kind} Â· ${when(a.created_at)}`), ...details(a));
+  card.append(el("div", "meta", `#${a.id} · ${KINDS[a.kind] || a.kind} · ${when(a.created_at)}`), ...details(a));
   const note = el("input"); note.placeholder = "Note (optional)";
   const row = el("div", "row");
   for (const [label, decision] of [["Approve", "approved"], ["Reject", "rejected"]]) {
@@ -143,6 +148,28 @@ function pendingCard(a) {
   return card;
 }
 
+// Reports are written in Markdown: enough of it here for them to read as a document, with everything set as text, never HTML.
+function inline(line) {
+  const p = el("span");
+  line.split("**").forEach((part, i) => p.append(i % 2 ? el("strong", null, part) : part));
+  return p;
+}
+
+function reportBody(md) {
+  const box = el("div", "report");
+  let list = null, code = null;
+  for (const line of md.split("\n")) {
+    if (line.startsWith("```")) { if (code) { code = null; } else { code = el("pre"); box.append(code); } list = null; continue; }
+    if (code) { code.append(line + "\n"); continue; }
+    const bullet = line.match(/^\s*[*-]\s+(.*)/), head = line.match(/^#+\s+(.*)/);
+    if (bullet) { if (!list) { list = el("ul"); box.append(list); } const li = el("li"); li.append(inline(bullet[1])); list.append(li); continue; }
+    list = null;
+    if (head) box.append(el("h3", null, head[1]));
+    else if (line.trim()) { const para = el("p"); para.append(inline(line)); box.append(para); }
+  }
+  return box;
+}
+
 async function load() {
   if (!api || !key) {
     $("status").textContent = !location.hash
@@ -156,7 +183,7 @@ async function load() {
     $("pending").replaceChildren(...(pending.length ? pending.map(pendingCard) : [el("p", "status", "Nothing to approve.")]));
     $("reports").replaceChildren(...(reports.length ? reports.map((r) => {
       const d = el("details", "card"); d.open = r.kind === "scan";
-      d.append(el("summary", null, `${r.kind} Â· ${when(r.created_at)}`), el("pre", null, r.body_md));
+      d.append(el("summary", null, `${r.kind} · ${when(r.created_at)}`), reportBody(r.body_md));
       return d;
     }) : [el("p", "status", "No reports yet.")]));
   } catch (e) { $("status").textContent = e.message === "forbidden" ? "This link is not valid. Use the latest one from your email." : `Could not load: ${e.message}`; }
